@@ -8,3 +8,4 @@
 [fflate](https://github.com/101arrowz/fflate) **v0.8.2** 官方构建产物，许可 **MIT**。
 
 boxadb 的业务代码不来自任何其他项目；这些是纯第三方依赖库。
+各许可全文与版权声明见同目录 [THIRD-PARTY-LICENSES.md](./THIRD-PARTY-LICENSES.md)。
