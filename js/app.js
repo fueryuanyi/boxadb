@@ -1,0 +1,246 @@
+'use strict';
+import * as BoxTerm from './terminal.js';
+
+const state = {
+  connected: false,
+  connecting: false,
+  demo: false,
+  device: null,
+  ip: '',
+  prefs: {},
+};
+
+// ── 小工具（function 声明，避免顶层调用时的 TDZ）────────
+function $(sel, root = document) { return root.querySelector(sel); }
+function $$(sel, root = document) { return Array.from(root.querySelectorAll(sel)); }
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+function loadPrefs() { try { return JSON.parse(localStorage.getItem('boxadb') || '{}'); } catch { return {}; } }
+function savePrefs() { try { localStorage.setItem('boxadb', JSON.stringify(state.prefs)); } catch {} }
+function escapeHtml(s){ return String(s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
+function formatBytes(n){ const u=['B','KB','MB','GB']; let i=0; while(n>=1024&&i<3){n/=1024;i++;} return n.toFixed(n<10&&i?1:0)+' '+u[i]; }
+function hue(str){ let h=0; for(let i=0;i<(str||'').length;i++) h=(h*31+str.charCodeAt(i))>>>0; return `hsl(${h%360} 50% 34%)`; }
+function toast(msg, kind='info', ms=2800){ const el=document.createElement('div'); el.className='toast'+(kind!=='info'?' '+kind:''); el.textContent=msg; $('#toasts').appendChild(el); setTimeout(()=>{el.style.opacity='0';el.style.transition='opacity .2s';},ms-200); setTimeout(()=>el.remove(),ms); }
+
+// ── 惰性加载传输层 ─────────────────────────────────────
+let _t = null;
+async function tango() { if (!_t) _t = await import('./tango.js'); return _t; }
+
+// ── 假设备（仅 ?demo=1 预览用）─────────────────────────
+function demoDevice(ip='192.168.66.172'){ return { brand:'ONN', model:'ONN Google TV (Android 14)', android:'Android 14（SDK 34）', cpu:'Amlogic S905X4', gpu:'Mali-G31', arch:'64 位', mem:'可用 1.2 GB / 共 2.9 GB', resolution:'3840 × 2160', appCount:'18 个', uptime:'2 天 6 小时', storageText:'已用 4.1 GB / 共 11 GB（剩 6.9 GB）', storagePct:37, addr:`${ip}:5555` }; }
+const DEMO_APPS = [
+  { pkg:'com.netflix.ninja', name:'Netflix' }, { pkg:'com.google.android.youtube.tv', name:'YouTube' },
+  { pkg:'tv.pluto.android', name:'Pluto TV' }, { pkg:'org.xbmc.kodi', name:'Kodi' },
+  { pkg:'com.spotify.tv.android', name:'Spotify' }, { pkg:'com.plexapp.android', name:'Plex' },
+];
+
+// ── 顶栏 & 连接 ────────────────────────────────────────
+function renderStatus() {
+  const pill=$('#status-pill'), btn=$('#connect-btn');
+  if (state.connecting)     { pill.className='pill busy'; pill.textContent=state.demo?'演示中':'连接中…'; btn.textContent='断开'; btn.disabled=true; }
+  else if (state.connected) { pill.className='pill on';   pill.textContent=state.demo?'演示中':'已连接';   btn.textContent='断开'; btn.disabled=state.demo; }
+  else                      { pill.className='pill off';  pill.textContent='未连接'; btn.textContent='连接'; btn.disabled=false; }
+  renderDeviceInfo();
+  if (typeof updateSummary==='function') updateSummary();
+}
+function renderDeviceInfo(){
+  const d=state.device;
+  const set=(id,v)=>{const e=$(id); if(e) e.textContent=v;};
+  set('#i-model',d?.model??'—'); set('#i-brand',d?.brand??'—'); set('#i-android',d?.android??'—');
+  set('#i-cpu',d?.cpu??'—'); set('#i-gpu',d?.gpu??'—'); set('#i-arch',d?.arch??'—');
+  set('#i-mem',d?.mem??'—'); set('#i-res',d?.resolution??'—');
+  set('#i-appcount',d?.appCount??'—'); set('#i-uptime',d?.uptime??'—');
+  set('#i-storage',d?.storageText??'—');
+  const pct=(d&&d.storagePct)||0;
+  const pctEl=$('#i-storage-pct'); if(pctEl) pctEl.textContent=d?`· 已用 ${pct}%`:'';
+  const bar=$('#i-storage-bar'); if(bar){ bar.style.width=Math.min(100,pct)+'%'; bar.style.background=pct>90?'var(--danger)':(pct>70?'var(--warn)':'var(--accent)'); }
+}
+async function doConnect() {
+  if (state.demo) return;
+  // crypto.subtle 只在安全上下文（https 或 localhost）可用——没有它无法生成 ADB 密钥
+  if (!(window.isSecureContext && window.crypto && window.crypto.subtle)) {
+    toast('当前页面不是安全上下文：请改用 https://NAS地址:5667 访问飞牛（或本地 localhost），否则浏览器不允许生成 ADB 密钥。', 'err', 6000);
+    return;
+  }
+  if (state.connected) { const T=await tango(); await T.disconnect(); BoxTerm.closeSession(); state.connected=false; state.device=null; renderStatus(); toast('已断开','warn'); return; }
+  const ip=$('#device-ip').value.trim();
+  state.ip=ip; state.prefs.ip=ip; savePrefs();
+  state.connecting=true; renderStatus();
+  try {
+    const T=await tango();
+    await T.connect({ ip });
+    state.device=await T.fetchDevice(ip);
+    state.connected=true;
+    toast(`已连接：${state.device.brand} ${state.device.model}`);
+  } catch (err) {
+    toast('连接失败：'+err.message,'err',4200);
+  } finally { state.connecting=false; renderStatus(); if (state.connected) refreshApps(); }
+}
+function bindHeader(){
+  $('#connect-btn').addEventListener('click', doConnect);
+  $('#device-ip').addEventListener('keydown', e=>{ if(e.key==='Enter') doConnect(); });
+  state.prefs=loadPrefs();
+  if (state.prefs.ip) $('#device-ip').value=state.prefs.ip;
+}
+
+// ── 标签页 ─────────────────────────────────────────────
+function bindTabs(){
+  $$('.tab').forEach(t=>t.addEventListener('click',()=>{
+    $$('.tab').forEach(x=>x.classList.remove('active')); t.classList.add('active');
+    $$('.panel').forEach(p=>p.classList.add('hidden'));
+    const view=$('#view-'+t.dataset.view); view.classList.remove('hidden');
+    try { t.scrollIntoView({inline:'center',block:'nearest',behavior:'smooth'}); } catch {}
+    if(t.dataset.view==='terminal'){ BoxTerm.open($('#term')); }
+  }));
+}
+// 标签条溢出时，用左右箭头引导“还能滑”；能排下时自动隐藏
+function bindTabsNav(){
+  const tabs=$('#tabs'); if(!tabs) return;
+  const L=$('#tabs-left'), R=$('#tabs-right');
+  function refresh(){
+    const overflow=tabs.scrollWidth-tabs.clientWidth>2;
+    const atL=tabs.scrollLeft<=2;
+    const atR=tabs.scrollLeft+tabs.clientWidth>=tabs.scrollWidth-2;
+    if(L) L.classList.toggle('show', overflow && !atL);
+    if(R) R.classList.toggle('show', overflow && !atR);
+  }
+  const step=()=>Math.max(140, tabs.clientWidth*0.8);
+  tabs.addEventListener('scroll',refresh,{passive:true});
+  window.addEventListener('resize',refresh);
+  if(L) L.addEventListener('click',()=>tabs.scrollBy({left:-step(),behavior:'smooth'}));
+  if(R) R.addEventListener('click',()=>tabs.scrollBy({left:step(),behavior:'smooth'}));
+  requestAnimationFrame(refresh);
+  window.addEventListener('load',refresh);
+}
+
+// ── 安装队列 ───────────────────────────────────────────
+function detectKind(n){ n=n.toLowerCase();
+  if(n.endsWith('.apk'))return{k:'APK',i:'📱'}; if(n.endsWith('.xapk'))return{k:'XAPK',i:'📦'};
+  if(n.endsWith('.apks'))return{k:'APKS',i:'🧩'}; if(n.endsWith('.apkm'))return{k:'APKM',i:'🧱'}; return{k:'未知',i:'❓'};}
+function addFiles(files){ const ul=$('#install-queue');
+  for(const f of files){ const {k,i}=detectKind(f.name); const li=document.createElement('li'); li.className='q-item'; li._file=f;
+    li.innerHTML=`<div class="q-ic">${i}</div><div class="q-main"><div class="q-name">${escapeHtml(f.name)}</div>
+      <div class="q-meta">${formatBytes(f.size)} · ${k} · <span class="status">待安装</span></div><div class="q-bar"><i></i></div></div>
+      <span class="badge detect">待安装</span><button class="btn primary q-install">安装</button><button class="q-x" title="移除">×</button>`;
+    ul.appendChild(li);
+    li.querySelector('.q-x').onclick=()=>{ li.remove(); updateSummary(); };
+    li.querySelector('.q-install').onclick=()=>installOne(li);
+  }
+  updateSummary();
+}
+function updateSummary(){ const items=$$('#install-queue .q-item'); const n=items.length; const bytes=items.reduce((s,li)=>s+((li._file&&li._file.size)||0),0);
+  const sum=$('#queue-summary'); if(sum) sum.textContent = n? `队列 ${n} 个 · ${formatBytes(bytes)}` : '队列为空';
+  const all=$('#install-all'); if(all) all.disabled = n===0 || state.demo || !state.connected;
+  const clr=$('#clear-queue'); if(clr) clr.disabled = n===0;
+}
+async function installOne(li){
+  const file=li._file; const badge=li.querySelector('.badge'), status=li.querySelector('.status'), btn=li.querySelector('.q-install'), bar=li.querySelector('.q-bar>i');
+  if(!state.connected){ toast('请先连接盒子','warn'); return; }
+  if(state.demo){ toast('演示模式无设备，连接后才能安装','warn'); return; }
+  if(li._installing) return;
+  li._installing=true; btn.disabled=true; badge.className='badge detect'; badge.textContent='安装中'; status.textContent='准备…'; bar.style.width='0';
+  try{
+    const T=await tango();
+    await T.installFile(file,(done,total)=>{ const p=Math.min(99,Math.round(done/((total||file.size)||1)*100)); bar.style.width=p+'%'; status.textContent=p+'%'; });
+    badge.className='badge ok'; badge.textContent='完成'; bar.style.width='100%'; status.textContent='已安装'; toast(`已安装：${file.name}`);
+  }catch(err){ badge.className='badge err'; badge.textContent='失败'; status.textContent=err.message; toast('安装失败：'+err.message,'err',4200); }
+  finally{ li._installing=false; btn.disabled=false; updateSummary(); }
+}
+async function installAll(){ const items=$$('#install-queue .q-item');
+  for(const li of items){ const st=li.querySelector('.badge')?.textContent; if(st==='完成'||st==='安装中') continue; await installOne(li); } }
+function clearQueue(){ $('#install-queue').innerHTML=''; updateSummary(); }
+function bindInstall(){ const dz=$('#dropzone'), input=$('#file-input');
+  dz.addEventListener('click',e=>{ if(e.target.tagName!=='BUTTON') input.click(); });
+  $('#pick-files').addEventListener('click',()=>input.click());
+  input.addEventListener('change',()=>{ addFiles(input.files); input.value=''; });
+  ['dragenter','dragover'].forEach(ev=>dz.addEventListener(ev,e=>{e.preventDefault();dz.classList.add('drag');}));
+  ['dragleave','drop'].forEach(ev=>dz.addEventListener(ev,e=>{e.preventDefault();dz.classList.remove('drag');}));
+  dz.addEventListener('drop',e=>addFiles(e.dataTransfer.files));
+  $('#install-all').addEventListener('click',installAll);
+  $('#clear-queue').addEventListener('click',clearQueue);
+  updateSummary();
+}
+
+// ── 应用管理 ───────────────────────────────────────────
+async function refreshApps(){ const body=$('#apps-body');
+  if(!state.connected){ body.innerHTML='<div class="empty">未连接设备 — 连接后将在此显示应用列表。</div>'; return; }
+  if(state.demo){ renderAppGrid(DEMO_APPS); return; }
+  body.innerHTML='<div class="empty">正在读取应用列表…</div>';
+  try { const T=await tango(); const apps=await T.listApps({thirdOnly:true}); renderAppGrid(apps); }
+  catch(err){ body.innerHTML=`<div class="empty">读取失败：${escapeHtml(err.message)}</div>`; }
+}
+function renderAppGrid(apps){ const q=($('#app-search').value||'').toLowerCase();
+  const list=apps.filter(a=>!q||a.name.toLowerCase().includes(q)||a.pkg.toLowerCase().includes(q));
+  const body=$('#apps-body'); if(!list.length){ body.innerHTML='<div class="empty">没有匹配的应用</div>'; return; }
+  body.innerHTML='<div class="app-grid"></div>'; const g=body.firstElementChild;
+  for(const a of list){ const card=document.createElement('div'); card.className='app-card';
+    const letter=((a.name||a.pkg||'?').trim().charAt(0)||'?').toUpperCase();
+    card.innerHTML=`<div class="app-ic" style="background:${hue(a.pkg)};color:#fff;font-weight:700">${escapeHtml(letter)}</div><div class="app-info"><div class="app-name">${escapeHtml(a.name)}</div>
+      <div class="app-pkg">${escapeHtml(a.pkg)}</div><div class="app-acts">
+      <button class="mini" data-act="launch">启动</button><button class="mini" data-act="stop">强制停止</button>
+      <button class="mini danger" data-act="uninstall">卸载</button><button class="mini" data-act="clear">清除数据</button></div></div>`;
+    card.querySelectorAll('.mini').forEach(b=>b.onclick=()=>appAction(b,a)); g.appendChild(card);
+  }
+}
+async function appAction(btn,a){ const act=btn.dataset.act;
+  if(!state.connected){ toast('未连接设备','warn'); return; }
+  if(state.demo){ toast(`（演示）${act}: ${a.pkg}`,'warn'); return; }
+  if(act==='uninstall' && !confirm(`确认卸载 ${a.name}？`)) return;
+  if(act==='clear' && !confirm(`确认清除 ${a.name} 的数据？`)) return;
+  btn.disabled=true;
+  try { const T=await tango();
+    if(act==='launch') await T.launch(a.pkg);
+    else if(act==='stop') await T.forceStop(a.pkg);
+    else if(act==='clear') await T.clearData(a.pkg);
+    else if(act==='uninstall'){ await T.uninstall(a.pkg); toast(`已卸载 ${a.name}`); await refreshApps(); }
+  } catch(err){ toast(act+' 失败：'+err.message,'err'); } finally { btn.disabled=false; }
+}
+function bindApps(){ $('#refresh-apps').addEventListener('click',refreshApps);
+  $('#app-search').addEventListener('input',()=>state.connected&&refreshApps());
+}
+
+// ── 遥控器 ─────────────────────────────────────────────
+function bindRemote(){
+  $$('#view-remote .rkey, #view-remote .dp').forEach(btn=>btn.addEventListener('click',async()=>{
+    if(!state.connected){ toast('未连接设备','warn'); return; }
+    btn.classList.add('flash'); setTimeout(()=>btn.classList.remove('flash'),120);
+    const code=btn.dataset.key, label=btn.title||btn.textContent.trim();
+    if(state.demo){ toast(`（演示）${label} → keyevent ${code}`,'info',1200); return; }
+    try { const T=await tango(); await T.keyevent(code); } catch(err){ toast('按键失败：'+err.message,'err'); }
+  }));
+  $$('#view-remote .action').forEach(btn=>btn.addEventListener('click',()=>runDeviceAction(btn.dataset.act,btn)));
+}
+async function runDeviceAction(act,btn){
+  if(!state.connected){ toast('未连接设备','warn'); return; }
+  const names={screenshot:'截屏',reboot:'重启'};
+  const label=names[act]||act;
+  if(state.demo){ toast(`（演示）${label}`,'warn'); return; }
+  if(act==='reboot' && !confirm('确认重启盒子？')) return;
+  btn.disabled=true;
+  try { const T=await tango();
+    if(act==='screenshot'){ const blob=await T.screenshot(); downloadBlob(blob, `boxadb-${Date.now()}.png`); toast('已截屏并下载'); }
+    else if(act==='reboot'){ await T.reboot(''); toast('已发送重启'); }
+  } catch(err){ toast(label+' 失败：'+err.message,'err',4200); } finally { btn.disabled=false; }
+}
+function downloadBlob(blob,name){ const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download=name; a.click(); setTimeout(()=>URL.revokeObjectURL(url),1000); }
+
+// ── 日志（一次 logcat -d 抓取；连续流下一步接入）────────
+function bindLog(){
+  $('#log-start').onclick=async()=>{ if(!state.connected){toast('未连接设备','warn');return;} if(state.demo){toast('（演示）日志稍后接入','warn');return;}
+    $('#log-out').textContent='拉取中…'; try{ const T=await tango(); $('#log-out').textContent=await T.shell('logcat -d -v brief -t 400'); }catch(err){ $('#log-out').textContent='! '+err.message; } };
+  $('#log-clear').onclick=()=>$('#log-out').textContent='';
+  $('#log-download').onclick=()=>{ const txt=$('#log-out').textContent; if(!txt){toast('无日志','warn');return;} downloadBlob(new Blob([txt],{type:'text/plain'}),`logcat-${Date.now()}.txt`); };
+  $('#log-filter').addEventListener('input',e=>{ /* 过滤展示下一步增强 */ });
+}
+
+function bindProto(){ const b=$('#prototype-banner'); if(b) $('#proto-close')?.addEventListener('click',()=>b.remove()); }
+
+// ── 演示预览 ───────────────────────────────────────────
+function seedDemo(){ state.demo=true; state.connected=true; state.device=demoDevice(); renderStatus(); renderAppGrid(DEMO_APPS); }
+
+// ── 启动 ───────────────────────────────────────────────
+function boot(){
+  bindProto(); bindHeader(); bindTabs(); bindTabsNav(); bindInstall(); bindApps(); bindRemote(); bindLog();
+  renderStatus();
+  if (location.search.includes('demo=1')) seedDemo();
+}
+document.addEventListener('DOMContentLoaded', boot);

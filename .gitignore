@@ -1,0 +1,12 @@
+# 依赖与构建产物
+node_modules/
+dist/
+*.zip
+
+# 本地
+.DS_Store
+.vscode/
+.idea/
+
+# 本地草稿（勿提交）
+scratch/

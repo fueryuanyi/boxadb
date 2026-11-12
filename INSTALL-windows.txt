@@ -1,0 +1,18 @@
+BoxADB WiFi 桥接 —— Windows 安装说明
+
+1. 解压本 zip 到一个文件夹（不要直接在压缩包里双击运行）。
+2. 双击 install.bat。
+   它会安装到 %LOCALAPPDATA%\boxadb\，并自动去掉 exe 的"来自网络"标记
+   （Mark-of-the-Web），从而避免 SmartScreen 的"Windows 已保护你的电脑 /
+   仍要运行"蓝盾。
+3. 双击桌面「BoxADB 桥接」快捷方式 → 弹一个 cmd 窗口跑桥（用着别关）。
+4. 浏览器打开 https://wukongdaily.github.io/boxadb/ ，填盒子 IP
+   （例如 192.168.66.157，端口 5555 自动补）→ 点「连接设备」。
+5. 用完关掉那个 cmd 窗口，端口立即释放，不留任何后台进程。
+
+卸载：删除 %LOCALAPPDATA%\boxadb\ 文件夹 + 桌面「BoxADB 桥接」快捷方式即可。
+
+提示：
+- 首次运行若某些第三方杀软仍弹"允许/询问"，选允许即可（二进制是 Go 标准库
+  静态编译，无联网上传、无安装服务）。
+- 盒子需先用 USB 线执行过一次 adb tcpip 5555 才能走 WiFi 连接。
