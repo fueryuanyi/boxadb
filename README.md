@@ -1,27 +1,16 @@
 # boxadb
 
-网页版 ADB 助手，专为电视盒子 / Android TV 设计。无需安装任何客户端：
+网页版 ADB 助手，专为电视盒子 / Android TV 设计。
 **一个网页 → 连上局域网里的盒子 → 装 APK / 终端 / 遥控器 / 截图 / 重启。**
 
-> 纯 WiFi（adb tcpip 5555），MIT 许可，业务代码全部原创。
+## 快速开始
+电脑打开桥接程序，再打开网页，就能用了<br>
+### 桥接程序 https://github.com/wukongdaily/boxadb/releases
+1. 双击桌面「BoxADB 桥接」快捷方式 → 弹窗口跑桥（保持别关）
+2. 浏览器打开 https://wukongdaily.github.io/boxadb/ ，填盒子 IP（端口 5555 自动补）→ 点「连接设备」
+3. 用完关掉那个窗口，端口立即释放，不留后台
 
-## 快速开始（macOS Apple Silicon）
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/wukongdaily/boxadb/main/install.sh | bash
-```
-
-安装后双击「BoxADB 桥接.command」启动本机桥，再打开网页连盒子即可。
-
-Windows（10/11 64-bit）：从 [Releases](https://github.com/wukongdaily/boxadb/releases) 下载 `boxadb-windows.zip`，解压后双击 `install.bat`。
-
-## 目录
-
-| 文件 | 说明 |
-|---|---|
-| `bridge.go` | 本机桥：WebSocket(RFC 6455) ↔ TCP 字节管道，只转发不解析 ADB |
-| `js/` | 前端业务代码（原创） |
-| `js/vendor/` | 第三方引擎（见下方致谢与许可） |
 
 ## 第三方组件致谢（均为 MIT）
 
