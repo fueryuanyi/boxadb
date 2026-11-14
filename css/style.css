@@ -140,6 +140,12 @@ input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(61,220,132,.16)
 .mini:hover{border-color:var(--accent)}
 .mini.danger{background:rgba(255,92,92,.16);border-color:rgba(255,92,92,.45);color:#ffb3b3;font-weight:600}
 .mini.danger:hover{background:var(--danger);color:#fff;border-color:var(--danger)}
+.mini.warn{background:rgba(255,180,84,.14);border-color:rgba(255,180,84,.45);color:#ffd9a3;font-weight:600}
+.mini.warn:hover{background:var(--warn);color:#241505;border-color:var(--warn)}
+.mini.ok{background:rgba(61,220,132,.14);border-color:rgba(61,220,132,.45);color:#9ff0c4;font-weight:600}
+.mini.ok:hover{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.app-card.off{opacity:.62}
+.tag-off{display:inline-block;margin-left:8px;padding:1px 8px;border-radius:999px;font-size:11px;font-weight:600;vertical-align:1px;background:rgba(255,180,84,.15);border:1px solid rgba(255,180,84,.4);color:#ffd9a3}
 .empty{display:grid;place-items:center;padding:56px 20px;color:var(--muted);border:1px dashed var(--line-2);border-radius:var(--radius)}
 
 /* 遥控器 */

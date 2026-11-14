@@ -121,13 +121,17 @@ async function collect(readable) {
   return out;
 }
 
-// ── 列第三方应用（含可执行文件路径，便于取应用图标/启动 activity 后续再做）──
-export async function listApps({ thirdOnly = true } = {}) {
-  const a = requireAdb();
-  const raw = await shell(`pm list packages ${thirdOnly ? '-3' : ''}`);
+// ── 列应用：scope='third' 第三方（-3）/ 'system' 系统（-s）；顺带标记已禁用的包 ──
+export async function listApps({ scope = 'third' } = {}) {
+  const raw = await shell(`pm list packages ${scope === 'system' ? '-s' : '-3'}`);
   const pkgs = raw.split('\n').map(l => (l.match(/^package:(.+)$/) || [])[1]).filter(Boolean);
-  // 尽力补一个人类可读名：从路径末段或包名尾段（真实图标/label 走 PackageManager dump，后续增强）
-  return pkgs.map(pkg => ({ pkg, name: pkg.split('.').filter(Boolean).slice(-1)[0] || pkg }));
+  let disabled = new Set();
+  try {
+    const d = await shell('pm list packages -d');
+    disabled = new Set(d.split('\n').map(l => (l.match(/^package:(.+)$/) || [])[1]).filter(Boolean));
+  } catch {}
+  // 尽力补一个人类可读名：从包名尾段（真实图标/label 走 PackageManager dump，后续增强）
+  return pkgs.map(pkg => ({ pkg, name: pkg.split('.').filter(Boolean).slice(-1)[0] || pkg, disabled: disabled.has(pkg) }));
 }
 
 export async function keyevent(code) { return shell(`input keyevent ${code}`); }
@@ -146,6 +150,18 @@ export async function launch(pkg) {
 export async function forceStop(pkg) { return shell(`am force-stop ${pkg}`); }
 export async function clearData(pkg)  { return shell(`pm clear ${pkg}`); }
 export async function uninstall(pkg)  { return shell(`pm uninstall ${pkg}`); }
+
+// 系统应用不能卸载，只能禁用（disable-user 对当前用户生效，无需 root，可随时 enable 恢复）
+export async function disableApp(pkg) {
+  const out = await shell(`pm disable-user --user 0 ${pkg}`);
+  if (!/new state:\s*disabled/i.test(out)) throw new Error((out || '').trim() || '禁用失败：该应用可能受系统保护');
+  return out;
+}
+export async function enableApp(pkg) {
+  const out = await shell(`pm enable ${pkg}`);
+  if (!/new state:\s*(enabled|default)/i.test(out)) throw new Error((out || '').trim() || '启用失败');
+  return out;
+}
 
 // 用 exec: 服务跑一条命令并往其 stdin 写二进制（必须 exec:，shell: 会套 PTY 改坏字节）
 async function shellWriteBytes(cmd, bytes) {

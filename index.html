@@ -80,9 +80,13 @@
     <section class="panel hidden" id="view-apps">
       <div class="panel-head">
         <h2>应用管理</h2>
-        <p class="muted">列出已安装应用，一键启动 / 强停 / 清数据 / 卸载。</p>
+        <p class="muted">第三方应用可卸载；系统应用不可卸载，仅可禁用（可随时启用恢复）。</p>
       </div>
       <div class="apps-toolbar">
+        <div class="seg" id="apps-scope" role="tablist" aria-label="应用分组">
+          <button class="seg-btn active" data-scope="third" role="tab" aria-selected="true">第三方应用</button>
+          <button class="seg-btn" data-scope="system" role="tab" aria-selected="false">系统应用</button>
+        </div>
         <button class="btn" id="refresh-apps">↻ 刷新列表</button>
         <input id="app-search" class="search" type="search" placeholder="搜索应用名或包名" />
       </div>

@@ -8,6 +8,7 @@ const state = {
   device: null,
   ip: '',
   prefs: {},
+  appsScope: 'third', // 应用管理分组：third 第三方 / system 系统
 };
 
 // ── 小工具（function 声明，避免顶层调用时的 TDZ）────────
@@ -31,6 +32,11 @@ const DEMO_APPS = [
   { pkg:'com.netflix.ninja', name:'Netflix' }, { pkg:'com.google.android.youtube.tv', name:'YouTube' },
   { pkg:'tv.pluto.android', name:'Pluto TV' }, { pkg:'org.xbmc.kodi', name:'Kodi' },
   { pkg:'com.spotify.tv.android', name:'Spotify' }, { pkg:'com.plexapp.android', name:'Plex' },
+];
+const DEMO_SYSTEM_APPS = [
+  { pkg:'com.android.settings', name:'设置' }, { pkg:'com.android.systemui', name:'系统界面' },
+  { pkg:'com.google.android.tv', name:'电视服务' }, { pkg:'com.android.bluetooth', name:'蓝牙' },
+  { pkg:'com.google.android.gms', name:'Google 服务', disabled:true }, { pkg:'com.android.providers.media', name:'媒体存储' },
 ];
 
 // ── 顶栏 & 连接 ────────────────────────────────────────
@@ -163,39 +169,57 @@ function bindInstall(){ const dz=$('#dropzone'), input=$('#file-input');
 // ── 应用管理 ───────────────────────────────────────────
 async function refreshApps(){ const body=$('#apps-body');
   if(!state.connected){ body.innerHTML='<div class="empty">未连接设备 — 连接后将在此显示应用列表。</div>'; return; }
-  if(state.demo){ renderAppGrid(DEMO_APPS); return; }
+  const demoList = state.appsScope==='system' ? DEMO_SYSTEM_APPS : DEMO_APPS;
+  if(state.demo){ renderAppGrid(demoList); return; }
   body.innerHTML='<div class="empty">正在读取应用列表…</div>';
-  try { const T=await tango(); const apps=await T.listApps({thirdOnly:true}); renderAppGrid(apps); }
+  try { const T=await tango(); const apps=await T.listApps({scope:state.appsScope}); renderAppGrid(apps); }
   catch(err){ body.innerHTML=`<div class="empty">读取失败：${escapeHtml(err.message)}</div>`; }
 }
 function renderAppGrid(apps){ const q=($('#app-search').value||'').toLowerCase();
   const list=apps.filter(a=>!q||a.name.toLowerCase().includes(q)||a.pkg.toLowerCase().includes(q));
   const body=$('#apps-body'); if(!list.length){ body.innerHTML='<div class="empty">没有匹配的应用</div>'; return; }
   body.innerHTML='<div class="app-grid"></div>'; const g=body.firstElementChild;
-  for(const a of list){ const card=document.createElement('div'); card.className='app-card';
+  const sys = state.appsScope==='system';
+  for(const a of list){ const card=document.createElement('div'); card.className='app-card'+(a.disabled?' off':'');
     const letter=((a.name||a.pkg||'?').trim().charAt(0)||'?').toUpperCase();
-    card.innerHTML=`<div class="app-ic" style="background:${hue(a.pkg)};color:#fff;font-weight:700">${escapeHtml(letter)}</div><div class="app-info"><div class="app-name">${escapeHtml(a.name)}</div>
+    // 第三方：可卸载；系统：不可卸载，只能禁用/启用，其余三个按钮一致
+    const dangerBtn = sys
+      ? (a.disabled ? '<button class="mini ok" data-act="enable">启用</button>'
+                    : '<button class="mini warn" data-act="disable">禁用</button>')
+      : '<button class="mini danger" data-act="uninstall">卸载</button>';
+    const offTag = a.disabled ? '<span class="tag-off">已禁用</span>' : '';
+    card.innerHTML=`<div class="app-ic" style="background:${hue(a.pkg)};color:#fff;font-weight:700">${escapeHtml(letter)}</div><div class="app-info"><div class="app-name">${escapeHtml(a.name)}${offTag}</div>
       <div class="app-pkg">${escapeHtml(a.pkg)}</div><div class="app-acts">
       <button class="mini" data-act="launch">启动</button><button class="mini" data-act="stop">强制停止</button>
-      <button class="mini danger" data-act="uninstall">卸载</button><button class="mini" data-act="clear">清除数据</button></div></div>`;
+      ${dangerBtn}<button class="mini" data-act="clear">清除数据</button></div></div>`;
     card.querySelectorAll('.mini').forEach(b=>b.onclick=()=>appAction(b,a)); g.appendChild(card);
   }
 }
 async function appAction(btn,a){ const act=btn.dataset.act;
   if(!state.connected){ toast('未连接设备','warn'); return; }
-  if(state.demo){ toast(`（演示）${act}: ${a.pkg}`,'warn'); return; }
   if(act==='uninstall' && !confirm(`确认卸载 ${a.name}？`)) return;
   if(act==='clear' && !confirm(`确认清除 ${a.name} 的数据？`)) return;
+  if(act==='disable' && !confirm(`确认禁用系统应用「${a.name}」？\n\n禁用后它将停止运行并从桌面消失，可能影响相关系统功能。\n之后可在本列表点「启用」恢复。`)) return;
+  if(state.demo){ toast(`（演示）${act}: ${a.pkg}`,'warn'); return; }
   btn.disabled=true;
   try { const T=await tango();
     if(act==='launch') await T.launch(a.pkg);
     else if(act==='stop') await T.forceStop(a.pkg);
     else if(act==='clear') await T.clearData(a.pkg);
     else if(act==='uninstall'){ await T.uninstall(a.pkg); toast(`已卸载 ${a.name}`); await refreshApps(); }
+    else if(act==='disable'){ await T.disableApp(a.pkg); toast(`已禁用 ${a.name}`,'warn'); await refreshApps(); }
+    else if(act==='enable'){ await T.enableApp(a.pkg); toast(`已启用 ${a.name}`); await refreshApps(); }
   } catch(err){ toast(act+' 失败：'+err.message,'err'); } finally { btn.disabled=false; }
 }
 function bindApps(){ $('#refresh-apps').addEventListener('click',refreshApps);
   $('#app-search').addEventListener('input',()=>state.connected&&refreshApps());
+  $$('#apps-scope .seg-btn').forEach(b=>b.addEventListener('click',()=>{
+    if(state.appsScope===b.dataset.scope) return;
+    state.appsScope=b.dataset.scope;
+    $$('#apps-scope .seg-btn').forEach(x=>{ const on=x===b; x.classList.toggle('active',on); x.setAttribute('aria-selected',on); });
+    $('#app-search').value='';
+    refreshApps();
+  }));
 }
 
 // ── 遥控器 ─────────────────────────────────────────────
