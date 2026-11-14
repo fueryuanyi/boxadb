@@ -1,5 +1,6 @@
 'use strict';
 import * as BoxTerm from './terminal.js';
+import * as Icons from './icons.js';
 
 const state = {
   connected: false,
@@ -67,7 +68,7 @@ async function doConnect() {
     toast('当前页面不是安全上下文：请改用 https://NAS地址:5667 访问飞牛（或本地 localhost），否则浏览器不允许生成 ADB 密钥。', 'err', 6000);
     return;
   }
-  if (state.connected) { const T=await tango(); await T.disconnect(); BoxTerm.closeSession(); state.connected=false; state.device=null; renderStatus(); toast('已断开','warn'); return; }
+  if (state.connected) { const T=await tango(); await T.disconnect(); BoxTerm.closeSession(); Icons.reset(); state.connected=false; state.device=null; renderStatus(); toast('已断开','warn'); return; }
   const ip=$('#device-ip').value.trim();
   state.ip=ip; state.prefs.ip=ip; savePrefs();
   state.connecting=true; renderStatus();
@@ -175,7 +176,7 @@ async function refreshApps(){ const body=$('#apps-body');
   try { const T=await tango(); const apps=await T.listApps({scope:state.appsScope}); renderAppGrid(apps); }
   catch(err){ body.innerHTML=`<div class="empty">读取失败：${escapeHtml(err.message)}</div>`; }
 }
-function renderAppGrid(apps){ const q=($('#app-search').value||'').toLowerCase();
+function renderAppGrid(apps){ Icons.reset(); const q=($('#app-search').value||'').toLowerCase();
   const list=apps.filter(a=>!q||a.name.toLowerCase().includes(q)||a.pkg.toLowerCase().includes(q));
   const body=$('#apps-body'); if(!list.length){ body.innerHTML='<div class="empty">没有匹配的应用</div>'; return; }
   body.innerHTML='<div class="app-grid"></div>'; const g=body.firstElementChild;
@@ -188,12 +189,14 @@ function renderAppGrid(apps){ const q=($('#app-search').value||'').toLowerCase()
                     : '<button class="mini warn" data-act="disable">禁用</button>')
       : '<button class="mini danger" data-act="uninstall">卸载</button>';
     const offTag = a.disabled ? '<span class="tag-off">已禁用</span>' : '';
-    card.innerHTML=`<div class="app-ic" style="background:${hue(a.pkg)};color:#fff;font-weight:700">${escapeHtml(letter)}</div><div class="app-info"><div class="app-name">${escapeHtml(a.name)}${offTag}</div>
+    card.innerHTML=`<div class="app-ic" data-pkg="${escapeHtml(a.pkg)}" style="background:${hue(a.pkg)};color:#fff;font-weight:700">${escapeHtml(letter)}</div><div class="app-info"><div class="app-name"><span class="app-name-t">${escapeHtml(a.name)}</span>${offTag}</div>
       <div class="app-pkg">${escapeHtml(a.pkg)}</div><div class="app-acts">
       <button class="mini" data-act="launch">启动</button><button class="mini" data-act="stop">强制停止</button>
       ${dangerBtn}<button class="mini" data-act="clear">清除数据</button></div></div>`;
     card.querySelectorAll('.mini').forEach(b=>b.onclick=()=>appAction(b,a)); g.appendChild(card);
   }
+  // 首屏已是字母头像；仅连上真机时后台懒加载补真图标（切走/断开会 Icons.reset 取消）
+  if(state.connected && !state.demo){ requestAnimationFrame(()=>Icons.attach(g, tango)); }
 }
 async function appAction(btn,a){ const act=btn.dataset.act;
   if(!state.connected){ toast('未连接设备','warn'); return; }

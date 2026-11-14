@@ -332,6 +332,60 @@ export async function screenshot() {
   }
 }
 
+// 取某个包的 base.apk 绝对路径（抽 manifest/arsc/图标文件用）
+export async function baseApkPath(pkg) {
+  const out = await shell(`pm path ${pkg}`);
+  return (out || '').split('\n').map((s) => s.trim().replace(/^package:/, '')).find((s) => /base\.apk$/.test(s)) || null;
+}
+
+// 读设备上某个绝对路径文件的原始字节（复用截图同款 sync.read 二进制通道），返回 Uint8Array
+export async function readFileBytes(devPath) {
+  const a = requireAdb();
+  const sync = await a.sync();
+  try { return await collect(sync.read(devPath)); }
+  finally { try { await sync.dispose(); } catch {} }
+}
+
+// 在设备上解析 APK(zip) 成员路径，返回“候选图标列表”（按分数降序，最多 8 个），供调用方逐个试抽。
+// 每个 apk 的候选各自打分打印「score⇥apk⇥name」，外层 sort -rn 全局排序（跨 base 与 split）。
+// 打分：base 仅作平手微加(+2)；ic_launcher/app_icon 精确名(+10)；banner 是 TV 宽幅图，不当方形图标重罚(-12)；
+// 前景/背景层罚(-15)；密度靠近 xhdpi/xxhdpi 加分。返回 [{apk,member}, ...]（无则空数组）。
+export async function pickIconMembers(pkg) {
+  const script =
+    "for f in $(pm path " + pkg + " | tr -d '\\r' | sed 's/^package://'); do " +
+    "unzip -l \"$f\" 2>/dev/null | grep -E 'res/(mipmap|drawable)[^ ]*/.*\\.(png|webp)$' | awk -v A=\"$f\" " +
+    "'{n=$NF;split(n,pp,\"/\");b=pp[length(pp)];s=(A ~ /base\\.apk$/)?2:0;" +
+    "if(n ~ /\\/mipmap/)s=s+3;" +
+    "if(b ~ /^(ic_launcher|app_icon|ic_app|icon)\\.(png|webp)$/)s=s+12;else if(b ~ /launcher|app_icon/)s=s+8;" +
+    "if(b ~ /banner/)s=s-12;if(b ~ /(foreground|background|_fg|_bg)/)s=s-15;" +
+    "if(b ~ /facebook|notify|notification|abc_|ic_star|button|splash|panel|share|send|search|ic_menu|spinner|progress|checkbox|radiobutton|textfield|textfield/)s=s-25;" +
+    "d=-1;if(n ~ /xxxhdpi/)d=5;else if(n ~ /xxhdpi/)d=4;else if(n ~ /xhdpi/)d=3;else if(n ~ /tvdpi/)d=3;else if(n ~ /hdpi/)d=2;else if(n ~ /mdpi/)d=1;" +
+    "if(d==3||d==4)s=s+8;else if(d==5)s=s+3;else if(d==2)s=s+4;else if(d==1)s=s+1;s=s+$1/1000000;" +
+    "print s\"\\t\"A\"\\t\"n}' ; done | sort -rn | head -8";
+  const out = await shell(script);
+  const list = [];
+  for (const line of (out || '').split('\n')) {
+    const parts = line.trim().split('\t');
+    if (parts.length >= 3 && parts[2]) list.push({ apk: parts[1], member: parts[2] });
+  }
+  return list;
+}
+
+// 从 APK 里抽取指定成员字节：设备上 unzip -p 落到唯一临时文件 → sync.read 回传 → rm。
+// 走“设备落地文件 + sync 二进制读”，二进制不经过 shell stdout，规避 PTY/换行破坏。
+// tmp 必须每次唯一：懒加载并发=2，共用固定名会交叉读写导致“串图标”。
+let _icSeq = 0;
+export async function extractZipMember(apkPath, memberPath) {
+  const tmp = '/data/local/tmp/boxadb-ic-' + Date.now().toString(36) + '-' + (_icSeq++).toString(36) + '.tmp';
+  try {
+    await shell(`unzip -p '${apkPath}' '${memberPath}' > '${tmp}' 2>/dev/null; :`);
+    const bytes = await readFileBytes(tmp);
+    return (bytes && bytes.length) ? bytes : null;
+  } finally {
+    try { await shell(`rm -f '${tmp}'`); } catch {}
+  }
+}
+
 export async function reboot(mode = '') {
   const a = requireAdb();
   if (!mode) { await shell('reboot'); return; }
