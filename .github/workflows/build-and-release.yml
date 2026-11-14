@@ -26,6 +26,10 @@ jobs:
             goarch: arm64
             suffix: ''
             artifact: boxadb-bridge-darwin-arm64
+          - goos: darwin
+            goarch: amd64
+            suffix: ''
+            artifact: boxadb-bridge-darwin-amd64
           - goos: windows
             goarch: amd64
             suffix: '.exe'
@@ -113,11 +117,9 @@ jobs:
           tag_name: ${{ steps.tag.outputs.TAG }}
           name: boxadb-bridge ${{ steps.tag.outputs.TAG }}
           body: |
-            boxadb WiFi 桥接的二进制版（Go 静态编译，无需装 Node.js）。
-
             ### 一键命令
 
-            **macOS（Apple Silicon）** —— 打开 Terminal 粘贴：
+            **macOS（Apple Silicon 和 Intel 均支持）** —— 打开 Terminal 粘贴：
             ```bash
             curl -fsSL https://raw.githubusercontent.com/wukongdaily/boxadb/main/install.sh | bash
             ```
@@ -130,7 +132,7 @@ jobs:
 
             或走图形方式：下载 `boxadb-windows.zip` → 解压 → 双击 `install.bat`。
 
-            **产物说明：** macOS 用 `boxadb-bridge-darwin-arm64`（由 install.sh 处理隔离属性）；Windows 只发布 `boxadb-windows.zip`（内含 exe + 图标 + 安装脚本），不再单独提供散装 exe。
+            **产物说明：** macOS 按 CPU 自动选择 `boxadb-bridge-darwin-arm64`（Apple Silicon）或 `boxadb-bridge-darwin-amd64`（Intel），由 install.sh 处理隔离属性；Windows 只发布 `boxadb-windows.zip`（内含 exe + 图标 + 安装脚本），不再单独提供散装 exe。
 
             ### 怎么用
             1. 双击桌面「BoxADB 桥接」快捷方式 → 弹窗口跑桥（保持别关）
@@ -140,6 +142,7 @@ jobs:
             构建由 GitHub Actions 完成，二进制无外部依赖。
           files: |
             staging/boxadb-bridge-darwin-arm64
+            staging/boxadb-bridge-darwin-amd64
             staging/boxadb-windows.zip
           draft: false
           prerelease: false

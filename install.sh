@@ -9,8 +9,7 @@ case "$ARCH_RAW" in
     BIN_NAME="boxadb-bridge-darwin-arm64"
     ;;
   x86_64)
-    echo "当前方案只提供 Apple Silicon（arm64）版二进制。"
-    exit 1
+    BIN_NAME="boxadb-bridge-darwin-amd64"
     ;;
   *)
     echo "不支持的 CPU 架构：$ARCH_RAW"
