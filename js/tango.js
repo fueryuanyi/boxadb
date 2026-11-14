@@ -186,6 +186,71 @@ async function pushBytes(path, bytes, mtimeSec) {
   } finally { try { await sync.dispose(); } catch {} }
 }
 
+// ── ABI 预检：在把 APK 传给盒子之前先判断架构兼容性（32 位系统装 64 位包等）──
+const KNOWN_ABIS = ['arm64-v8a', 'armeabi-v7a', 'armeabi', 'x86', 'x86_64', 'riscv64'];
+const ABI_LABEL = {
+  'arm64-v8a': '64 位 ARM（arm64-v8a）',
+  'armeabi-v7a': '32 位 ARM（armeabi-v7a）',
+  armeabi: '32 位 ARM（armeabi）',
+  x86_64: '64 位 x86',
+  x86: '32 位 x86',
+  riscv64: 'RISC-V 64',
+};
+const abiLabel = a => ABI_LABEL[a] || a;
+
+// 扫描 apk 字节里的 zip 条目名（不解压内容），收集它需要的 native ABI。
+// 信号来源：lib/<abi>/ 目录、config.<abi>.apk split 文件名。
+// 返回 Set（可能为空=无 native 代码）；包结构读不出来时返回 null（不拦截，交给设备裁决）。
+export function apkRequiredAbis(bytes) {
+  const found = new Set();
+  try {
+    unzipSync(bytes, { filter: f => {
+      const n = f.name || '';
+      if (n.startsWith('lib/')) {
+        const d = n.split('/')[1];
+        if (d && KNOWN_ABIS.includes(d)) found.add(d);
+      }
+      const cm = n.match(/(?:^|\/)config\.([a-z0-9_]+)\.apk$/i);
+      if (cm) {
+        const a = cm[1].replace(/_/g, '-');
+        if (KNOWN_ABIS.includes(a)) found.add(a);
+      }
+      return false; // 只读目录，不 inflate 任何文件
+    } });
+  } catch { return null; }
+  return found;
+}
+
+// 纯判断：required=包需要的 ABI 集合，deviceAbis=设备 abilist。
+// 只要有一个 ABI 能对上就放行（universal 包在 32 位机可装）；完全对不上才拦。
+export function decideAbiCompat(required, deviceAbis) {
+  if (!required || !required.size) return { ok: true };
+  if (!deviceAbis || !deviceAbis.length) return { ok: true };
+  if ([...required].some(a => deviceAbis.includes(a))) return { ok: true };
+  const is32Only = !deviceAbis.includes('arm64-v8a') && deviceAbis.some(a => a === 'armeabi-v7a' || a === 'armeabi');
+  if (required.size === 1 && required.has('arm64-v8a') && is32Only) {
+    return { ok: false, msg: '这个安装包是 64 位（arm64）版本，你的盒子是 32 位系统，装不了。请下载页面里标着「armeabi-v7a / 32 位」的版本' };
+  }
+  return { ok: false, msg: `架构不匹配：安装包需要 ${[...required].map(abiLabel).join(' 或 ')}，而盒子只支持 ${deviceAbis.map(abiLabel).join(' / ')}，无法安装` };
+}
+
+// 安装前统一预检（拿不到设备 abilist 时不拦截，避免误报）
+async function checkAbiCompat(apks) {
+  const required = new Set();
+  for (const p of apks) {
+    const a = apkRequiredAbis(p.bytes);
+    if (!a) return; // 有包读不了结构：放行
+    a.forEach(x => required.add(x));
+  }
+  if (!required.size) return;
+  let deviceAbis = [];
+  try {
+    deviceAbis = (await shell('getprop ro.product.cpu.abilist')).trim().split(',').map(s => s.trim()).filter(Boolean);
+  } catch { return; }
+  const d = decideAbiCompat(required, deviceAbis);
+  if (!d.ok) throw new Error(d.msg);
+}
+
 // 解析安装包 → { apks:[{name,bytes}], obbs:[{name,pkg,bytes}] }
 async function parsePackage(file) {
   const lower = (file.name || '').toLowerCase();
@@ -215,6 +280,7 @@ async function parsePackage(file) {
 export async function installFile(file, onProgress) {
   const { apks, obbs } = await parsePackage(file);
   if (!apks.length) throw new Error((file.name || '包') + ' 里没有可安装的 .apk');
+  await checkAbiCompat(apks);   // 传输前预检：32 位盒子装 64 位包等，直接用人话拦截
   // base 优先（简单启发式；install-write 一个会话内可含多 split）
   apks.sort((x, y) => (/base/i.test(x.name) ? 0 : 1) - (/base/i.test(y.name) ? 0 : 1));
 
