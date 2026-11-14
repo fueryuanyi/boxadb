@@ -34,6 +34,14 @@ jobs:
             goarch: amd64
             suffix: '.exe'
             artifact: boxadb-bridge-windows-amd64.exe
+          - goos: linux
+            goarch: amd64
+            suffix: ''
+            artifact: boxadb-bridge-linux-amd64
+          - goos: linux
+            goarch: arm64
+            suffix: ''
+            artifact: boxadb-bridge-linux-arm64
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -132,7 +140,13 @@ jobs:
 
             或走图形方式：下载 `boxadb-windows.zip` → 解压 → 双击 `install.bat`。
 
-            **产物说明：** macOS 按 CPU 自动选择 `boxadb-bridge-darwin-arm64`（Apple Silicon）或 `boxadb-bridge-darwin-amd64`（Intel），由 install.sh 处理隔离属性；Windows 只发布 `boxadb-windows.zip`（内含 exe + 图标 + 安装脚本），不再单独提供散装 exe。
+            **Linux（x86_64 / ARM64）** —— 打开终端粘贴：
+            ```bash
+            curl -fsSL https://raw.githubusercontent.com/wukongdaily/boxadb/main/install.sh | bash
+            ```
+            （同一脚本按 `uname` 自动选 `boxadb-bridge-linux-amd64` 或 `boxadb-bridge-linux-arm64`，装到 `~/.local/bin/boxadb-bridge`；Linux 无隔离/签名问题，装完直接 `boxadb-bridge` 运行。）
+
+            **产物说明：** macOS 按 CPU 自动选择 `boxadb-bridge-darwin-arm64`（Apple Silicon）或 `boxadb-bridge-darwin-amd64`（Intel），由 install.sh 处理隔离属性；Linux 提供 `boxadb-bridge-linux-amd64` / `boxadb-bridge-linux-arm64`（静态编译、通用各发行版）；Windows 只发布 `boxadb-windows.zip`（内含 exe + 图标 + 安装脚本），不再单独提供散装 exe。
 
             ### 怎么用
             1. 双击桌面「BoxADB 桥接」快捷方式 → 弹窗口跑桥（保持别关）
@@ -143,7 +157,10 @@ jobs:
           files: |
             staging/boxadb-bridge-darwin-arm64
             staging/boxadb-bridge-darwin-amd64
+            staging/boxadb-bridge-linux-amd64
+            staging/boxadb-bridge-linux-arm64
             staging/boxadb-windows.zip
           draft: false
           prerelease: false
           make_latest: true
+          overwrite_files: true

@@ -2,19 +2,48 @@
 set -euo pipefail
 
 REPO="wukongdaily/boxadb"
-ARCH_RAW="$(uname -m)"
+OS="$(uname -s)"
+ARCH="$(uname -m)"
+URL_BASE="https://github.com/${REPO}/releases/latest/download"
 
-case "$ARCH_RAW" in
-  arm64)
-    BIN_NAME="boxadb-bridge-darwin-arm64"
-    ;;
-  x86_64)
-    BIN_NAME="boxadb-bridge-darwin-amd64"
-    ;;
-  *)
-    echo "不支持的 CPU 架构：$ARCH_RAW"
+if [ "$OS" = "Linux" ]; then
+  # ── Linux：无 Gatekeeper / 无 quarantine / 无签名，下二进制 + chmod 即可 ──
+  case "$ARCH" in
+    x86_64|amd64)  BIN_NAME="boxadb-bridge-linux-amd64" ;;
+    aarch64|arm64) BIN_NAME="boxadb-bridge-linux-arm64" ;;
+    *) echo "不支持的 Linux 架构：$ARCH" >&2; exit 1 ;;
+  esac
+
+  BINDIR="${XDG_BIN_HOME:-$HOME/.local/bin}"
+  BIN_PATH="$BINDIR/boxadb-bridge"
+  mkdir -p "$BINDIR"
+
+  echo "下载 $URL_BASE/$BIN_NAME"
+  if ! curl -fL -o "$BIN_PATH" "$URL_BASE/$BIN_NAME"; then
+    echo "[错误] 下载失败。确认 GitHub Releases 已构建完成（首次需先跑 Actions）。" >&2
     exit 1
-    ;;
+  fi
+  chmod +x "$BIN_PATH"
+
+  echo
+  echo "✅ 已安装：$BIN_PATH"
+  case ":$PATH:" in
+    *":$BINDIR:"*) echo "   运行：boxadb-bridge" ;;
+    *) echo "   运行：$BIN_PATH"
+       echo "   （可选）加入 PATH：echo 'export PATH=\"$BINDIR:\$PATH\"' >> ~/.bashrc && source ~/.bashrc" ;;
+  esac
+  echo
+  echo "用法："
+  echo "   1) 终端运行 boxadb-bridge（前台跑桥；Ctrl+C 或关终端窗口即停）"
+  echo "   2) 浏览器打开 https://wukongdaily.github.io/boxadb/ 输盒子 IP → 点连接"
+  exit 0
+fi
+
+# ── macOS：按 CPU 选包，生成双击启动器 + 图标 + 去隔离 ──
+case "$ARCH" in
+  arm64)  BIN_NAME="boxadb-bridge-darwin-arm64" ;;
+  x86_64) BIN_NAME="boxadb-bridge-darwin-amd64" ;;
+  *) echo "不支持的 macOS 架构：$ARCH" >&2; exit 1 ;;
 esac
 
 APP_DIR="$HOME/Applications/BoxADB Bridge"
@@ -24,9 +53,8 @@ DESKTOP_LINK="$HOME/Desktop/BoxADB 桥接.command"
 
 mkdir -p "$APP_DIR"
 
-URL="https://github.com/${REPO}/releases/latest/download/${BIN_NAME}"
-echo "下载 $URL"
-if ! curl -fL -o "$BIN_PATH" "$URL"; then
+echo "下载 $URL_BASE/$BIN_NAME"
+if ! curl -fL -o "$BIN_PATH" "$URL_BASE/$BIN_NAME"; then
   echo "[错误] 下载失败。检查 GitHub Releases 是否已经构建完成（首次要跑一下 Actions）。" >&2
   exit 1
 fi
