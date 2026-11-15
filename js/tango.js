@@ -269,7 +269,7 @@ async function parsePackage(file) {
   if (lower.endsWith('.apk')) {
     return { apks: [{ name: file.name, bytes: new Uint8Array(await file.arrayBuffer()) }], obbs: [] };
   }
-  if (lower.endsWith('.xapk') || lower.endsWith('.apkm') || lower.endsWith('.apks') || lower.endsWith('.zip')) {
+  if (lower.endsWith('.xapk') || lower.endsWith('.apkm')) {
     const zip = unzipSync(new Uint8Array(await file.arrayBuffer()));
     let manifestPkg = '';
     if (zip['manifest.json']) { try { manifestPkg = JSON.parse(new TextDecoder().decode(zip['manifest.json'])).pkg || ''; } catch {} }
@@ -285,7 +285,7 @@ async function parsePackage(file) {
     }
     return { apks, obbs };
   }
-  throw new Error('不支持的文件类型（仅 .apk / .xapk / .apkm / .apks）');
+  throw new Error('不支持的文件类型（仅支持 .apk / .xapk / .apkm）');
 }
 
 // ── 安装：APK/XAPK/APKM/APKS，split + obb，流式（APK 不落地，pm install-create/write/commit）──

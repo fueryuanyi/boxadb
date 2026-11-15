@@ -122,7 +122,7 @@ function bindTabsNav(){
 // ── 安装队列 ───────────────────────────────────────────
 function detectKind(n){ n=n.toLowerCase();
   if(n.endsWith('.apk'))return{k:'APK',i:'📱'}; if(n.endsWith('.xapk'))return{k:'XAPK',i:'📦'};
-  if(n.endsWith('.apks'))return{k:'APKS',i:'🧩'}; if(n.endsWith('.apkm'))return{k:'APKM',i:'🧱'}; return{k:'未知',i:'❓'};}
+  if(n.endsWith('.apkm'))return{k:'APKM',i:'🧱'}; return{k:'未知',i:'❓'};}
 function addFiles(files){ const ul=$('#install-queue');
   for(const f of files){ const {k,i}=detectKind(f.name); const li=document.createElement('li'); li.className='q-item'; li._file=f;
     li.innerHTML=`<div class="q-ic">${i}</div><div class="q-main"><div class="q-name">${escapeHtml(f.name)}</div>
