@@ -95,6 +95,9 @@ async function hydrateOne(el, pkg, getT) {
   }
   let T; try { T = await getT(); } catch { return; }
   if (gen !== alive) return;
+  // 老设备（Android <5.0）：不做图标/真名解析（设备 unzip 常缺失、且解析吃老机器资源），保持首字母头像。
+  const sdk = await T.deviceSdk();
+  if (sdk && sdk < 21) return;
   let label = null, blob = null, mime = null;
   try {
     const base = await T.baseApkPath(pkg);

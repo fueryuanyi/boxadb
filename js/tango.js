@@ -64,6 +64,7 @@ export async function connect({ ip, port = DEFAULT_PORT } = {}) {
   }
   const a = new adb.Adb(transport);
   handle = { adb: a, closeSocket };
+  _sdk = null;   // 换设备复位 SDK 缓存
   a.disconnected.then(() => { if (handle && handle.adb === a) handle = null; }, () => {});
   return { adb: a, closeSocket };
 }
@@ -72,12 +73,23 @@ export function connected() { return !!handle; }
 
 export async function disconnect() {
   if (!handle) return;
-  const h = handle; handle = null;
+  const h = handle; handle = null; _sdk = null;
   try { await h.adb.close(); } catch {}
   try { h.closeSocket(); } catch {}
 }
 
 function requireAdb() { if (!handle) throw new Error('未连接设备'); return handle.adb; }
+
+// 设备 Android SDK 级别（连接后惰性取一次并缓存；断开/换设备复位）。取不到返回 0。
+let _sdk = null;
+export async function deviceSdk() {
+  if (_sdk != null) return _sdk;
+  try {
+    const s = (await shell('getprop ro.build.version.sdk')).trim();
+    _sdk = parseInt(s, 10) || 0;
+  } catch { _sdk = 0; }
+  return _sdk;
+}
 
 // ── 底层：跑一条一次性 shell，返回文本输出 ──────────────
 // 用 subprocess（shellProtocol 优先，其次 noneProtocol），命令结束流会关闭，
@@ -289,6 +301,16 @@ export async function installFile(file, onProgress) {
   const tick = n => { done += n; onProgress && onProgress(done, total); };
   const fail = t => /fail|error|exception/i.test(t) && !/success/i.test(t);
 
+  // 安卓 5.0 以下（SDK<21）：没有 pm install 会话 API。
+  // 只支持单 APK 的传统安装（推文件 + pm install -r）；XAPK/APKS/APKM 这类分包直接明确提示不支持。
+  const sdk = await deviceSdk();
+  if (sdk && sdk < 21) {
+    if (apks.length > 1 || obbs.length) {
+      throw new Error('这台设备系统较旧（Android 5.0 以下），不支持 XAPK/APKS/APKM 分包安装，请下载普通 .apk 版本');
+    }
+    return await legacyInstall(apks[0], tick, total);
+  }
+
   const create = await shell('pm install-create -r');
   const m = create.match(/\[(\d+)\]/);
   if (!m) throw new Error('创建安装会话失败：' + create.trim());
@@ -314,6 +336,20 @@ export async function installFile(file, onProgress) {
   } catch (e) {
     shell(`pm install-abandon ${sid}`).catch(() => {});
     throw e;
+  }
+}
+
+// 老设备（Android <5.0）传统安装：把 APK 推到 /data/local/tmp → pm install -r → 删除临时文件。
+async function legacyInstall(apk, tick) {
+  const tmp = `/data/local/tmp/boxadb-${Date.now()}.apk`;
+  try {
+    await pushBytes(tmp, apk.bytes);
+    tick && tick(apk.bytes.length);
+    const r = await shell(`pm install -r '${tmp}'`);
+    if (!/Success/i.test(r)) throw new Error('安装失败：' + (r || '').trim());
+    return (apk.name || '包') + ' 安装完成';
+  } finally {
+    try { await shell(`rm -f '${tmp}'`); } catch {}
   }
 }
 
@@ -405,9 +441,7 @@ export async function fetchDevice(ip) {
   const sdk = await safe(async () => gp('ro.build.version.sdk'), '');
   const abilist64 = await safe(async () => gp('ro.product.cpu.abilist64'), '');
   const arch = abilist64 ? '64 位' : '32 位';
-  let cpu = await safe(async () => gp('ro.soc.model'), '');
-  if (!cpu) cpu = await safe(() => detectCpuFromDts(), '未知');
-  cpu = prettyCpu(cpu) || '未知';   // soc.model 原始串（如 AMLS905X5M）也走厂商美化
+  let cpu = await safe(() => detectCpu(), '未知');
   let resolution = '未知';
   const resM = (await safe(async () => shell('wm size'), '')).match(/(\d+)x(\d+)/); if (resM) resolution = `${resM[1]} × ${resM[2]}`;
   const osName = release ? `Android ${release}${sdk ? '（SDK ' + sdk + '）' : ''}` : '未知';
@@ -486,30 +520,86 @@ function fmtUptime(sec){ const d=Math.floor(sec/86400),h=Math.floor(sec%86400/36
 function parseGpu(out){ const m=(out||'').match(/(?:GLES|Vulkan):\s*(.+)/i); if(!m) return '';
   const parts=m[1].split(',').map(s=>s.trim()).filter(Boolean); return parts[1]||parts[0]||''; }
 
-async function detectCpuFromDts() {
-  // 盒子最靠谱：/proc/device-tree/compatible 里常有 amlogic,s905x5m 这类
-  let raw = '';
-  try { raw = (await shell(`cat /proc/device-tree/compatible 2>/dev/null | tr '\\0' ' '`)).trim(); } catch {}
-  if (!raw) { try { raw = (await shell('getprop ro.board.platform')).trim(); } catch {} }
-  return prettyCpu(raw);
+// CPU 探测链（4 步，老设备也能出家族级结果）：
+//  1) ro.soc.model（Android 12+ 精确型号）
+//  2) /proc/device-tree/compatible（较新盒子常有 amlogic,s905x5m 之类）
+//  3) ro.hardware / ro.boot.hardware（老设备定厂商家族，如 mstar/amlogic/mt58xx…）
+//  4) ro.board.platform + /proc/cpuinfo 的 Hardware: 行（抠具体料号，如 MSD6A838）
+async function detectCpu() {
+  const gp = async (k) => { try { return (await shell('getprop ' + k)).trim(); } catch { return ''; } };
+  let c = prettyCpu(await gp('ro.soc.model'));
+  if (c) return c;
+  let dts = '';
+  try { dts = (await shell(`cat /proc/device-tree/compatible 2>/dev/null | tr '\\0' ' '`)).trim(); } catch {}
+  c = prettyCpu(dts); if (c) return c;
+  const hw = (await gp('ro.hardware')) || (await gp('ro.boot.hardware'));
+  const board = await gp('ro.board.platform');
+  let cpuHw = '';
+  try { const ci = await shell('cat /proc/cpuinfo'); const mm = ci.match(/Hardware\s*:\s*(.+)/i); if (mm) cpuHw = mm[1].trim(); } catch {}
+  const fam = familyOf(hw) || familyOf(board) || familyOf(cpuHw);
+  if (fam) {
+    const part = partOf(hw, fam) || partOf(board, fam) || partOf(cpuHw, fam);
+    return part ? fam + ' ' + part : fam;
+  }
+  return board || cpuHw || hw || '未知';
 }
+// 厂商家族识别（顺序敏感：MStar 的 msd/mstar 先于 MediaTek，避免 MT58xx 误判）
+const CPU_FAMILY = [
+  [/mstar|\bmsd\d|mi3\b/i, 'MStar'],
+  [/amlogic|meson|aml|g12[ab]|gxbb|tx[35]|s9\d\d/i, 'Amlogic'],
+  [/hisilicon|\bhi3[57]\d|bigfish|\bhi37\d|v[0-9]00\b/i, '海思'],
+  [/mediatek|\bmtk\b|\bmt5[0-9]{3}/i, 'MediaTek'],
+  [/rockchip|\brk3?\d/i, 'Rockchip'],
+  [/allwinner|\bsun[5-9]i|\bsun8|\bsun50/i, 'Allwinner'],
+  [/novatek|\bnt\d{3,4}/i, 'Novatek'],
+  [/broadcom|\bbcm\d/i, 'Broadcom'],
+  [/\bqcom|\bmsm\d|(?<![a-z])sm\d{3}|sdm\d/i, 'Qualcomm'],
+];
+function familyOf(s) { if (!s) return ''; for (const [re, name] of CPU_FAMILY) if (re.test(s)) return name; return ''; }
+// 从字符串里抠具体料号（如 MSD6A838 / S905X5M / MT5872 / RK3288 / Hi3798M）
+function partOf(s, fam) {
+  if (!s) return '';
+  let m;
+  switch (fam) {
+    case 'MStar':     m = s.match(/(msd|mt)\s?([0-9][a-z0-9]{2,})/i); return m ? (m[1].toUpperCase() + m[2].toUpperCase()) : '';
+    case 'Amlogic':   m = s.match(/s9\d\d[a-z0-9]*/i); return m ? m[0].toUpperCase() : '';
+    case 'MediaTek':  m = s.match(/mt\d{3,5}[a-z0-9]*/i); return m ? m[0].toUpperCase() : '';
+    case '海思':      m = s.match(/hi3[57]\d[a-z0-9]*/i); return m ? m[0].toUpperCase() : '';
+    case 'Rockchip':  m = s.match(/rk\d[a-z0-9]*/i); return m ? m[0].toUpperCase() : '';
+    case 'Allwinner': m = s.match(/sun[5-9][a-z0-9]*/i); return m ? m[0].toLowerCase() : '';
+    case 'Novatek':   m = s.match(/nt\d{3,4}[a-z0-9]*/i); return m ? m[0].toUpperCase() : '';
+    case 'Broadcom':  m = s.match(/bcm\d{4}[a-z0-9]*/i); return m ? m[0].toUpperCase() : '';
+    case 'Qualcomm':  m = s.match(/(msm\d[a-z0-9]*|sm\d{3}[a-z0-9]*|sdm\d{3}[a-z0-9]*)/i); return m ? m[1].toUpperCase() : '';
+    default: return '';
+  }
+}
+// 给定任意原始串，输出“厂商 [料号]”；认不出返回 ''（由上层决定回退）
 function prettyCpu(s) {
-  if (!s) return '未知';
-  // 覆盖各厂商原始形态：AMLS905X5M / amlogic,s905x5m / Amlogic S905X5M（幂等）
-  let m = s.match(/(?:amlogic|aml)[\s,-]*(s\d{3,4}[a-z0-9]*)/i);
-  if (m) return 'Amlogic ' + m[1].toUpperCase();
-  m = s.match(/^mt(\d+)/i); if (m) return 'MediaTek MT' + m[1];           // mt8695 → MediaTek MT8695
-  m = s.match(/(rockchip|rk)(\w+)/i); if (m) return 'Rockchip ' + m[2].toUpperCase();
-  m = s.match(/(allwinner|sun\d+[a-z]*)/i); if (m) return 'Allwinner ' + (m[1] || '').toUpperCase();
-  m = s.match(/(qcom|msm\d+\w*)|(sm\d{3}\w*)|(sdm\d+\w*)/i);
-  if (m) return 'Qualcomm ' + (m[2] || m[3] || m[1] || '').toUpperCase();
-  return s;
+  if (!s) return '';
+  const fam = familyOf(s);
+  if (!fam) return '';
+  const part = partOf(s, fam);
+  return part ? fam + ' ' + part : fam;
 }
 
 // ── 交互 PTY（供 xterm 终端）；返回 pty：有 .output/.input 流、resize(rows,cols)、exited、kill ──
 export async function openPty() {
   const a = requireAdb();
-  return a.subprocess.shellProtocol.pty({ terminalType: 'xterm-256color' });
+  // 优先真 PTY（需 adbd 支持 shell,V2 —— Android 5.0+）。老设备（约 4.4 及更早）没有 shellProtocol，
+  // 直接读 .pty 会抛 undefined 错，所以必须先判存在再用。
+  const sp = a.subprocess?.shellProtocol;
+  if (sp && typeof sp.pty === 'function') {
+    try { return await sp.pty({ terminalType: 'xterm-256color' }); } catch { /* 落到经典通道 */ }
+  }
+  // 回退：经典 shell: 通道（所有 adb 版本都有，adbd 侧仍分配 tty，可交互，仅不支持窗口 resize）。
+  const sock = await a.createSocket('shell:');
+  return {
+    classic: true,
+    output: sock.readable,
+    input: sock.writable,
+    resize() {},                 // 经典通道无 PTY，resize 空实现即可
+    async kill() { try { await sock.close(); } catch {} },
+  };
 }
 
 function withTimeout(promise, ms, msg) {
