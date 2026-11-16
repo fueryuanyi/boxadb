@@ -30,9 +30,18 @@
         <input id="device-ip" type="text" inputmode="decimal" autocomplete="off"
                placeholder="盒子 IP，如 192.168.66.172" spellcheck="false" />
         <button id="connect-btn" class="btn primary">连接</button>
+        <button id="usb-toggle" type="button" class="btn subtle" title="用 USB 数据线直连（需 Chrome / Edge）">🔌 USB 直连</button>
         <span id="status-pill" class="pill off">未连接</span>
       </div>
     </header>
+
+    <div id="usb-panel" class="usb-panel" hidden>
+      <p class="muted">仅限 Chrome / Edge。步骤：① 数据线把盒子连到电脑；② 若之前用过命令行 adb，先执行 <code>adb kill-server</code> 释放设备；③ 点下面按钮选择设备，并在盒子上点「允许 USB 调试」。</p>
+      <div class="usb-actions">
+        <button id="connect-usb-btn" class="btn primary">选择 USB 设备并连接</button>
+        <button id="usb-close" class="btn" type="button">关闭</button>
+      </div>
+    </div>
 
     <div class="tabs-wrap">
       <button class="tabs-arrow left" id="tabs-left" aria-label="向左滚动">‹</button>

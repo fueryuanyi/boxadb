@@ -23,6 +23,7 @@
 本项目站在这些优秀开源项目的肩膀上：
 
 - **[@yume-chan/ya-webadb (Tango)](https://github.com/yume-chan/ya-webadb)** —— ADB 协议引擎，感谢 [@yume-chan](https://github.com/yume-chan)（Simon Chan）
+- **[@yume-chan/adb-daemon-webusb](https://github.com/yume-chan/ya-webadb)** —— USB 数据线直连（WebUSB）传输组件
 - **[xterm.js](https://xtermjs.org/)** —— 浏览器终端
 - **[fflate](https://github.com/101arrowz/fflate)** —— APK/XAPK 解包
 

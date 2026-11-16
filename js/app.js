@@ -82,9 +82,30 @@ async function doConnect() {
     toast('连接失败：'+err.message,'err',4200);
   } finally { state.connecting=false; renderStatus(); if (state.connected) refreshApps(); }
 }
+async function doConnectUsb() {
+  if (state.demo) return;
+  if (!(window.isSecureContext && window.crypto && window.crypto.subtle)) {
+    toast('当前页面不是安全上下文，浏览器无法生成 ADB 密钥（请用 https 或 localhost）。', 'err', 6000); return;
+  }
+  if (state.connected) { toast('已连接；如需换连接方式，请先点上方「断开」。', 'warn'); return; }
+  state.connecting=true; renderStatus();
+  try {
+    const T=await tango();
+    await T.connectUsb();
+    state.device=await T.fetchDevice('USB');
+    state.connected=true;
+    toast(`已连接（USB）：${state.device.brand} ${state.device.model}`);
+  } catch (err) {
+    toast('USB 连接失败：'+err.message,'err',4800);
+  } finally { state.connecting=false; renderStatus(); if (state.connected) refreshApps(); }
+}
 function bindHeader(){
   $('#connect-btn').addEventListener('click', doConnect);
   $('#device-ip').addEventListener('keydown', e=>{ if(e.key==='Enter') doConnect(); });
+  const ut=$('#usb-toggle'); if (ut) ut.addEventListener('click', ()=>{ const p=$('#usb-panel'); if (p) p.hidden=!p.hidden; });
+  const ub=$('#connect-usb-btn'); if (ub) ub.addEventListener('click', doConnectUsb);
+  const uc=$('#usb-close'); if (uc) uc.addEventListener('click', ()=>{ const p=$('#usb-panel'); if (p) p.hidden=true; });
+  if (!navigator.usb) { const t=$('#usb-toggle'); if (t) t.hidden=true; const p=$('#usb-panel'); if (p) p.hidden=true; }
   state.prefs=loadPrefs();
   if (state.prefs.ip) $('#device-ip').value=state.prefs.ip;
 }

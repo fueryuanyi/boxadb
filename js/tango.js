@@ -69,6 +69,40 @@ export async function connect({ ip, port = DEFAULT_PORT } = {}) {
   return { adb: a, closeSocket };
 }
 
+// ── USB 直连（WebUSB，仅 Chromium）─────────────────────
+// 少数机型不便走 WiFi 桥时的兜底。关键前提：本机 adb server 会占着 USB 句柄，
+// 浏览器要连之前必须先 `adb kill-server` 释放，否则 requestDevice 拿到也连不上。
+export async function connectUsb() {
+  if (!navigator.usb) throw new Error('当前浏览器不支持 USB 直连，请改用 Chrome / Edge');
+  const { AdbDaemonWebUsbDeviceManager } = await import('./vendor/adb-daemon-webusb.js');
+  const manager = AdbDaemonWebUsbDeviceManager.BROWSER;
+  let device;
+  try {
+    device = await manager.requestDevice();
+  } catch (e) {
+    if (/busy|claim|open/i.test(String(e && e.message || e)))
+      throw new Error('设备被占用：请先在终端运行 adb kill-server 释放后重试');
+    throw new Error('未选择设备（已取消）');
+  }
+  if (!device) throw new Error('未选择设备（已取消）');
+  const connection = await device.connect();   // WebUSB 的 connection 已是 ADB 包流，直接喂 authenticate
+  let transport;
+  try {
+    transport = await withTimeout(
+      adb.AdbDaemonTransport.authenticate({ serial: device.serial || 'usb', connection, credentialStore: new CredentialStore('boxadb') }),
+      30000, '连接超时：请在盒子上允许 USB 调试'
+    );
+  } catch (e) {
+    try { device.close(); } catch {}
+    throw /auth/i.test(String(e?.message || e)) ? new Error('设备未授权：请在盒子弹窗点「允许 USB 调试」') : e;
+  }
+  const a = new adb.Adb(transport);
+  handle = { adb: a, closeSocket: () => { try { device.close(); } catch {} } };
+  _sdk = null;
+  a.disconnected.then(() => { if (handle && handle.adb === a) handle = null; }, () => {});
+  return { adb: a };
+}
+
 export function connected() { return !!handle; }
 
 export async function disconnect() {
