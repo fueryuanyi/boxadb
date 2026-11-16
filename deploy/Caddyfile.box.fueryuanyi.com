@@ -19,8 +19,13 @@ http://:8081 {
 	encode zstd gzip
 	file_server
 
-	@assets path /assets/*
-	header @assets Cache-Control "public, max-age=604800"
+	# 整站 no-store，不让 CF 缓存任何静态文件。
+	# 站点 2.2MB、单人使用，新鲜度比 CDN 命中率值钱；更关键的是——
+	# 2026-11-16 踩过：源站某次返回了「200 + 空 body」，CF 把空响应当正经内容
+	# 缓存了 4 小时（cf-cache-status: HIT + content-length: 0），页面白板、logo 裂图、
+	# 标签点不动，且各边缘节点各自缓存、表现还不一致。改成 no-store 后 CF 直接 BYPASS，
+	# 这类「坏响应被钉在边缘」的事再也不会发生。
+	header Cache-Control "no-store"
 	header {
 		X-Content-Type-Options nosniff
 		Referrer-Policy strict-origin-when-cross-origin

@@ -146,9 +146,11 @@ boxadb-net probe 192.168.8.1 80   # 用当前桥连该 LAN 的设备，看对端
 
 ## 注意事项
 
-- **CF 会缓存静态扩展**（.js/.css/.png）默认 4 小时（`cache-control: max-age=14400`）。
-  发布新版本后如果页面还是旧的，去面板 Purge Cache，别怀疑 Caddy。
-  源站返回过空响应时尤其会被缓存成「白板页面」——排查时先看 `cf-cache-status: HIT`。
+- **CF 默认会缓存静态扩展**（.js/.css/.png）4 小时。2026-11-16 因此出过一次事故：
+  源站某次返回「200 + 空 body」，CF 把空响应当正经内容缓存住，页面白板、logo 裂图、
+  标签点不动，而且**各边缘节点各自缓存、表现不一致**（同一条 URL，A 线路 HIT 空响应、B 线路 HIT 正常内容）。
+  现已把源站改成整站 `Cache-Control: no-store`，CF 上 `cf-cache-status: BYPASS`，**这类问题不再复发**。
+  排查口诀：先看 `cf-cache-status` + `content-length`，`HIT` 且长度 0 就是它。
 - 隧道 ingress 改了要重启 cloudflared；Caddy 改了 `systemctl reload caddy` 即可。
 
 ## 发布新版本
