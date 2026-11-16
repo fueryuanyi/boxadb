@@ -1,0 +1,37 @@
+#!/bin/sh /etc/rc.common
+# 盒子助手桥 · OpenWrt procd 服务
+#
+# 作用：让「常开的路由器」成为该地点的耳朵 —— 桥跑在它自己身上、只绑 127.0.0.1，
+# 外网/局域网都够不到它；需要时由你的电脑 ssh -L 把这条回环搬回去
+# （见 deploy/boxadb-net.sh）。因此这里不开任何端口、不加防火墙规则。
+#
+# 安装：
+#   scp boxadb-bridge-linux-arm64 root@<router>:/usr/bin/boxadb-bridge   # 记得 chmod +x
+#   scp boxadb-bridge.init root@<router>:/etc/init.d/boxadb-bridge       # 记得 chmod +x
+#   /etc/init.d/boxadb-bridge enable && /etc/init.d/boxadb-bridge start
+#
+# 地点名（BRIDGE_NAME）会经 /health 回显，用来分辨「现在这条 8765 指向哪个地点」。
+# 换地点就改下面这一行，然后 /etc/init.d/boxadb-bridge restart。
+
+START=95
+STOP=10
+USE_PROCD=1
+
+PROG=/usr/bin/boxadb-bridge
+BRIDGE_NAME_VALUE=home
+
+start_service() {
+	[ -x "$PROG" ] || { logger -t boxadb "bridge binary missing: $PROG"; return 1; }
+
+	procd_open_instance
+	procd_set_param command "$PROG"
+	procd_set_param env BRIDGE_NAME="$BRIDGE_NAME_VALUE"
+	procd_set_param respawn 3600 5 5
+	procd_set_param stdout 1
+	procd_set_param stderr 1
+	procd_close_instance
+}
+
+service_triggers() {
+	procd_add_reload_trigger boxadb-bridge
+}

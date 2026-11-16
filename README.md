@@ -14,8 +14,10 @@
 | 网页 | https://box.fueryuanyi.com/ （VPS 静态托管，Caddy 自动 HTTPS） |
 | 桥接二进制 | https://github.com/fueryuanyi/boxadb/releases （本仓库 Actions 构建） |
 | 部署方式 | `deploy/` 下 Caddyfile 片段 + Cloudflare 隧道 ingress，见 `deploy/README.md` |
+| 多地点 | 老家路由器上常驻一个桥，本机 `boxadb-net use home` 把 127.0.0.1:8765 指过去（SSH 隧道，不开端口），见下文「多地点」 |
 
-改动只有 URL 指向（install.sh / install.bat / README / release 文案），**ADB 逻辑零改动**。
+改动只有 URL 指向（install.sh / install.bat / README / release 文案）+ 一个 `BRIDGE_NAME`（`/health` 回显地点名，
+不设时行为不变），**ADB 逻辑零改动**。
 同步上游：`git fetch upstream && git merge upstream/main`（URL 补丁会冲突，冲突处保留本 fork 的地址）。
 
 ## 快速开始

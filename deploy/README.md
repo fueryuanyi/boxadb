@@ -96,6 +96,54 @@ iwr https://raw.githubusercontent.com/fueryuanyi/boxadb/main/install.bat -o $env
 curl -s http://127.0.0.1:8765/health     # boxadb bridge ok
 ```
 
+## 多地点：人在哪儿跟哪儿同网（`boxadb-net`）
+
+桥必须在**目标盒子所在的局域网里**。所以「在出租屋操作老家的电视」不是靠一个桥通吃，
+而是每个地点养一个桥、由本机的 `127.0.0.1:8765` 决定此刻指向谁。
+
+```
+浏览器 ws://127.0.0.1:8765          ← 前端写死这个地址，永远不用改
+      │
+      ├─ boxadb-net use local  → 本机 boxadb-bridge（够到当前所在网段）
+      └─ boxadb-net use home   → ssh -N -L 8765 → 老家常开主机的 127.0.0.1:8765
+```
+
+关键点：**远端的桥仍然只绑它自己的回环**，全靠 SSH 隧道搬过来 —— 不开防火墙端口、
+不做端口转发、公网和局域网都够不到它。浏览器侧始终是回环，不受 https 混合内容限制。
+
+| 地点 | 常开主机 | 桥怎么来 | 状态 |
+|---|---|---|---|
+| 老家 192.168.8.0/24 | GL-MT6000（OpenWrt，192.168.8.1 / tailnet 100.123.156.12） | `deploy/openwrt/install-on-openwrt.sh` 装成 procd 服务，`BRIDGE_NAME=home` | 已上线 |
+| 当前所在（笔记本） | 本机 | `boxadb-net use local` | 可用 |
+| MT3000 随身 192.168.12.x | GL-MT3000（tailnet 100.122.230.50） | 同一套 OpenWrt 脚本，`BRIDGE_NAME=travel` | 配置位留好，设备在线时装 |
+| 出租屋 / 宿舍 | 无常开主机 | 只能人在那儿时用 `local` | 以后有设备再加一行 |
+
+装路由器那一侧（本机 ssh 到路由器免密可用）：
+
+```bash
+./deploy/openwrt/install-on-openwrt.sh root@192.168.8.1 home     # 局域网装
+./deploy/openwrt/install-on-openwrt.sh root@100.123.156.12 home  # 或走 tailnet
+```
+
+本机这一侧（脚本装进 PATH，两台 Mac 都已装 `/opt/homebrew/bin/boxadb-net`）：
+
+```bash
+boxadb-net                # 状态：各地点可达性 + 当前指向谁
+boxadb-net use home       # 切到老家（约 1 秒）
+boxadb-net use local      # 切回本机
+boxadb-net off            # 全关，释放端口（别让桥 7×24 挂着）
+boxadb-net probe 192.168.8.1 80   # 用当前桥连该 LAN 的设备，看对端返回什么 —— 验「真的在那个网里」
+```
+
+地点表在 `~/.config/boxadb/sites.conf`，`<名字>\t<说明>\t<目标>`，目标是 `local` 或
+`ssh:user@host`；**加地点只加一行，不碰脚本**。
+
+实现上的两个坑（已处理，改脚本时别踩回去）：
+
+- 区分「当前指向哪个地点」靠 `/health` 回显（`boxadb bridge ok (home)`），所以 fork 里加了
+  `BRIDGE_NAME`；不设它时行为与上游完全一致。
+- `while read` 循环里调 `ssh` 必须带 `-n`，否则 ssh 会把配置文件 stdin 吃掉，后面的地点「消失」。
+
 ## 注意事项
 
 - **CF 会缓存静态扩展**（.js/.css/.png）默认 4 小时（`cache-control: max-age=14400`）。
