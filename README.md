@@ -18,6 +18,10 @@
 | **Firefox** | ⚠️ 理论上支持，暂未充分实测 |
 | **Safari** | ❌ 暂不支持（后续开发支持） |
 
+## 飞牛 NAS 版
+
+有飞牛 fnOS 的话，盒子助手还有常驻 NAS 的原生版 [boxadb-fnos](https://github.com/wukongdaily/boxadb-fnos)：经统一网关同源，**手机在客厅也能开网页连盒子**，不必在每台电脑另开桥。
+
 ## 第三方组件致谢（均为 MIT）
 
 本项目站在这些优秀开源项目的肩膀上：
