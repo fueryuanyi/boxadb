@@ -40,6 +40,13 @@ func listenPort() string {
 	return "8765"
 }
 
+// bridgeName 是给「一个浏览器 vs 多个地点的桥」的场景用的自我标识：
+// 本机桥和经 SSH 隧道过来的远端桥都叫 127.0.0.1:8765，只有 /health 的
+// 回显能把它们区分开（boxadb-net status 就靠这个判断当前指向哪个地点）。
+func bridgeName() string {
+	return strings.TrimSpace(os.Getenv("BRIDGE_NAME"))
+}
+
 // ── WebSocket 帧（按 RFC 6455；服务端发出的帧不加掩码）──
 
 const (
@@ -246,7 +253,11 @@ func router(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 	case r.URL.Path == "/health":
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-		w.Write([]byte("boxadb bridge ok\n"))
+		if n := bridgeName(); n != "" {
+			w.Write([]byte("boxadb bridge ok (" + n + ")\n"))
+		} else {
+			w.Write([]byte("boxadb bridge ok\n"))
+		}
 	case r.URL.Path == "/adb":
 		handleTunnel(w, r)
 	default:
@@ -276,7 +287,11 @@ func main() {
 	if err != nil {
 		log.Fatalf("listen %s: %v", addr, err)
 	}
-	log.Printf("boxadb bridge listening on http://%s (health: /health, tunnel: /adb)", addr)
+	if n := bridgeName(); n != "" {
+		log.Printf("boxadb bridge listening on http://%s as %q (health: /health, tunnel: /adb)", addr, n)
+	} else {
+		log.Printf("boxadb bridge listening on http://%s (health: /health, tunnel: /adb)", addr)
+	}
 
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
