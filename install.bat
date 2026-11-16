@@ -39,7 +39,7 @@ REM 1) Get exe + ico: copy from this folder if present, else download the zip
 if exist "%SRC_DIR%boxadb-bridge.exe" goto :copylocal
 
 echo No bundled files next to install.bat, downloading boxadb-windows.zip...
-curl -fL -o "%TEMP%\boxadb-windows.zip" "https://github.com/wukongdaily/boxadb/releases/latest/download/boxadb-windows.zip"
+curl -fL -o "%TEMP%\boxadb-windows.zip" "https://github.com/fueryuanyi/boxadb/releases/latest/download/boxadb-windows.zip"
 if errorlevel 1 goto :dlfail
 powershell -NoProfile -ExecutionPolicy Bypass -Command "$d=Join-Path $env:TEMP 'boxadb-win'; Expand-Archive -LiteralPath (Join-Path $env:TEMP 'boxadb-windows.zip') -DestinationPath $d -Force; Copy-Item -LiteralPath (Join-Path $d 'boxadb-bridge.exe') -Destination '%BIN%' -Force; Copy-Item -LiteralPath (Join-Path $d 'AppIcon.ico') -Destination '%ICON%' -Force"
 if errorlevel 1 goto :unzfail
@@ -74,7 +74,7 @@ if exist "%DESKTOP_LNK%" echo        shortcut: %DESKTOP_LNK%
 echo.
 echo Usage:
 echo    1) Double-click desktop shortcut "BoxADB Bridge" - bridge runs in a cmd window
-echo    2) Open https://wukongdaily.github.io/boxadb/ , enter box IP, connect
+echo    2) Open https://box.fueryuanyi.com/ , enter box IP, connect
 echo    3) Close the cmd window when done - port is released
 echo.
 pause

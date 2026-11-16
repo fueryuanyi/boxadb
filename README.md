@@ -4,11 +4,25 @@
 网页版 ADB 助手，专为电视盒子 / Android TV 设计。
 **一个网页 → 连上局域网里的盒子 → 装 APK / 终端 / 遥控器 / 截图 / 重启。**
 
+## 本 fork（fueryuanyi/boxadb）
+
+自托管分支：上游把网页放在 GitHub Pages（`wukongdaily.github.io`，大陆访问不稳），
+这里改成自己的域名 + 自己的 release，不依赖上游仓库可用性。
+
+| 项 | 值 |
+|---|---|
+| 网页 | https://box.fueryuanyi.com/ （VPS 静态托管，Caddy 自动 HTTPS） |
+| 桥接二进制 | https://github.com/fueryuanyi/boxadb/releases （本仓库 Actions 构建） |
+| 部署方式 | `deploy/` 下 Caddyfile 片段 + Cloudflare 隧道 ingress，见 `deploy/README.md` |
+
+改动只有 URL 指向（install.sh / install.bat / README / release 文案），**ADB 逻辑零改动**。
+同步上游：`git fetch upstream && git merge upstream/main`（URL 补丁会冲突，冲突处保留本 fork 的地址）。
+
 ## 快速开始
 电脑打开桥接程序，再打开网页，就能用了<br>
-### 桥接程序 https://github.com/wukongdaily/boxadb/releases
+### 桥接程序 https://github.com/fueryuanyi/boxadb/releases
 1. 双击桌面「BoxADB 桥接」快捷方式 → 弹窗口跑桥（保持别关）
-2. 浏览器打开 https://wukongdaily.github.io/boxadb/ ，填盒子 IP（端口 5555 自动补）→ 点「连接设备」
+2. 浏览器打开 https://box.fueryuanyi.com/ ，填盒子 IP（端口 5555 自动补）→ 点「连接设备」
 3. 用完关掉那个窗口，端口立即释放，不留后台
 
 ## 支持的浏览器

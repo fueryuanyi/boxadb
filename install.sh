@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPO="wukongdaily/boxadb"
+REPO="fueryuanyi/boxadb"
 OS="$(uname -s)"
 ARCH="$(uname -m)"
 URL_BASE="https://github.com/${REPO}/releases/latest/download"
@@ -35,7 +35,7 @@ if [ "$OS" = "Linux" ]; then
   echo
   echo "用法："
   echo "   1) 终端运行 boxadb-bridge（前台跑桥；Ctrl+C 或关终端窗口即停）"
-  echo "   2) 浏览器打开 https://wukongdaily.github.io/boxadb/ 输盒子 IP → 点连接"
+  echo "   2) 浏览器打开 https://box.fueryuanyi.com/ 输盒子 IP → 点连接"
   exit 0
 fi
 
@@ -107,5 +107,5 @@ echo "   图标：  $([ "$ICON_RESULT" = ok ] && echo "已应用" || echo "未�
 echo
 echo "用法："
 echo "   1) 双击「BoxADB 桥接.command」（桌面或 App 目录）→ Terminal 打开跑桥"
-echo "   2) 打开 https://wukongdaily.github.io/boxadb/ 输盒子 IP → 点连接"
+echo "   2) 打开 https://box.fueryuanyi.com/ 输盒子 IP → 点连接"
 echo "   3) 用完关掉 Terminal 窗口，端口自动释放"

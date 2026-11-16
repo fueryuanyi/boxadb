@@ -129,12 +129,12 @@ jobs:
 
             **macOS（Apple Silicon 和 Intel 均支持）** —— 打开 Terminal 粘贴：
             ```bash
-            curl -fsSL https://raw.githubusercontent.com/wukongdaily/boxadb/main/install.sh | bash
+            curl -fsSL https://raw.githubusercontent.com/fueryuanyi/boxadb/main/install.sh | bash
             ```
 
             **Windows（10/11 64-bit）** —— 打开 PowerShell 粘贴：
             ```powershell
-            iwr https://raw.githubusercontent.com/wukongdaily/boxadb/main/install.bat -o $env:TEMP\install.bat; & $env:TEMP\install.bat
+            iwr https://raw.githubusercontent.com/fueryuanyi/boxadb/main/install.bat -o $env:TEMP\install.bat; & $env:TEMP\install.bat
             ```
             （install.bat 会自动拉取本 release 的 `boxadb-windows.zip`、解压、去掉"来自网络"标记，规避 SmartScreen 蓝盾）
 
@@ -142,7 +142,7 @@ jobs:
 
             **Linux（x86_64 / ARM64）** —— 打开终端粘贴：
             ```bash
-            curl -fsSL https://raw.githubusercontent.com/wukongdaily/boxadb/main/install.sh | bash
+            curl -fsSL https://raw.githubusercontent.com/fueryuanyi/boxadb/main/install.sh | bash
             ```
             （同一脚本按 `uname` 自动选 `boxadb-bridge-linux-amd64` 或 `boxadb-bridge-linux-arm64`，装到 `~/.local/bin/boxadb-bridge`；Linux 无隔离/签名问题，装完直接 `boxadb-bridge` 运行。）
 
@@ -150,7 +150,7 @@ jobs:
 
             ### 怎么用
             1. 双击桌面「BoxADB 桥接」快捷方式 → 弹窗口跑桥（保持别关）
-            2. 浏览器打开 https://wukongdaily.github.io/boxadb/ ，填盒子 IP（端口 5555 自动补）→ 点「连接设备」
+            2. 浏览器打开 https://box.fueryuanyi.com/ ，填盒子 IP（端口 5555 自动补）→ 点「连接设备」
             3. 用完关掉那个窗口，端口立即释放，不留后台
 
             构建由 GitHub Actions 完成，二进制无外部依赖。

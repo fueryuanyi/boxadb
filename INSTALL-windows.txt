@@ -6,7 +6,7 @@ BoxADB WiFi 桥接 —— Windows 安装说明
    （Mark-of-the-Web），从而避免 SmartScreen 的"Windows 已保护你的电脑 /
    仍要运行"蓝盾。
 3. 双击桌面「BoxADB 桥接」快捷方式 → 弹一个 cmd 窗口跑桥（用着别关）。
-4. 浏览器打开 https://wukongdaily.github.io/boxadb/ ，填盒子 IP
+4. 浏览器打开 https://box.fueryuanyi.com/ ，填盒子 IP
    （例如 192.168.66.157，端口 5555 自动补）→ 点「连接设备」。
 5. 用完关掉那个 cmd 窗口，端口立即释放，不留任何后台进程。
 
