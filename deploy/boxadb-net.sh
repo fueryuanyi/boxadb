@@ -76,6 +76,9 @@ stop_current() {
   fi
   # 兜底 1：还没绑上端口（或绑失败卡住）的隧道进程也要收掉
   for p in $(pgrep -f "ssh -N .*-L 127\.0\.0\.1:$PORT:127\.0\.0\.1:$PORT" 2>/dev/null); do
+    # 别误杀自己（pgrep -f 会匹配到命令行里含同样字符串的 shell）
+    [ "$p" = "$$" ] && continue
+    [ "$p" = "$PPID" ] && continue
     kill "$p" 2>/dev/null || true
   done
 
